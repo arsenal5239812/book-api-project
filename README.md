@@ -1,13 +1,13 @@
 # Book Metadata and Recommendation API
 
-A coursework-ready FastAPI project designed for a high-mark oral examination submission. It demonstrates CRUD, SQL persistence, authentication, analytics, testing, documentation, and deployment readiness.
+A FastAPI coursework project focused on a runnable, SQL-backed API with authentication, analytics, tests, and clean repository structure.
 
 ## Why this project suits the brief
 - Implements a complete SQL-backed CRUD API
 - Exposes more than four HTTP endpoints
 - Returns JSON and uses conventional HTTP status codes
 - Includes authentication, analytics, and recommendation functionality
-- Provides tests, documentation, a report draft, and presentation slides
+- Provides tests and sample data import support
 
 ## Core features
 - CRUD for books
@@ -38,6 +38,8 @@ cp .env.example .env
 uvicorn app.main:app --reload
 ```
 
+The application loads configuration automatically from `.env`, so database, auth, and documentation settings can be changed without editing source code.
+
 API docs will be available at:
 - `http://127.0.0.1:8000/docs`
 - `http://127.0.0.1:8000/redoc`
@@ -55,26 +57,16 @@ pytest
 ## Recommended deployment
 Deploy the API on Render, Railway, or PythonAnywhere with PostgreSQL. For the oral exam, have both the hosted deployment and local fallback ready.
 
-## Repository checklist for submission
-- [x] Public GitHub repository
-- [x] Visible commit history
-- [x] README with setup and overview
-- [x] API documentation draft
-- [x] Technical report draft
-- [x] Presentation slide deck
-- [x] Tests
-- [x] Import script and sample data
+## Current repository scope
+This GitHub version is intentionally code-first while the coursework deliverables are still being refined.
 
-## Suggested commit plan
-1. `init fastapi project structure`
-2. `add sql models and schemas`
-3. `implement auth endpoints`
-4. `implement book crud`
-5. `implement review permissions and analytics`
-6. `add tests and seed script`
-7. `write docs report and slides`
+Included now:
+- API source code
+- Tests
+- Import script and sample CSV data
+- Setup instructions and environment template
 
-## Files included
-- `docs/api_documentation.pdf`
-- `report/technical_report.pdf`
-- `slides/book_api_presentation.pptx`
+To be added later for final coursework submission:
+- API documentation PDF
+- Technical report PDF
+- Presentation slides

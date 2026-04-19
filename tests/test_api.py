@@ -1,3 +1,8 @@
+import types
+
+from app.main import app
+
+
 def register_and_login(client):
     user = {"name": "Alice", "email": "alice@example.com", "password": "secret123"}
     assert client.post("/auth/register", json=user).status_code == 201
@@ -61,3 +66,11 @@ def test_review_requires_auth_and_updates_average(client):
 
     recommendations = client.get("/analytics/recommendations/1")
     assert recommendations.status_code == 200
+
+
+def test_openapi_uses_framework_default_generation(client):
+    assert isinstance(app.openapi, types.MethodType)
+    assert app.openapi.__self__ is app
+
+    schema = client.get(app.openapi_url).json()
+    assert schema["openapi"] == app.openapi()["openapi"]

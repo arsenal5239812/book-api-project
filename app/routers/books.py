@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
+from typing import Optional
 
 from app.database import get_db
 from app.models import Book
@@ -16,7 +17,7 @@ def create_book(book_in: BookCreate, db: Session = Depends(get_db)):
     return book
 
 @router.get("", response_model=list[BookRead])
-def list_books(genre: str | None = Query(default=None), author: str | None = Query(default=None), db: Session = Depends(get_db)):
+def list_books(genre: Optional[str] = Query(default=None), author: Optional[str] = Query(default=None), db: Session = Depends(get_db)):
     query = db.query(Book)
     if genre:
         query = query.filter(Book.genre.ilike(f"%{genre}%"))
