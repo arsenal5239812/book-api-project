@@ -1,6 +1,8 @@
 import types
 from pathlib import Path
 
+from alembic.config import Config
+from alembic import command
 from app.main import app
 from app.models import Book
 from scripts.import_books import import_goodbooks, import_simple_csv
@@ -332,6 +334,15 @@ def test_similar_books_respects_provenance_and_content_preference(client):
     assert strong_match["id"] in human_only_ids
     assert ai_assisted_match["id"] not in human_only_ids
 
+    allow_ai_assisted = client.get(
+        f"/books/{anchor['id']}/similar",
+        params={"content_preference": "allow_ai_assisted"},
+    )
+    assert allow_ai_assisted.status_code == 200
+    allow_ai_assisted_ids = [item["id"] for item in allow_ai_assisted.json()]
+    assert strong_match["id"] in allow_ai_assisted_ids
+    assert ai_assisted_match["id"] in allow_ai_assisted_ids
+
 
 def test_duplicate_review_for_same_book_is_rejected(client):
     headers = register_and_login(client)
@@ -564,6 +575,26 @@ def test_importer_reports_missing_goodbooks_files(db, tmp_path):
 
     assert "Missing goodbooks files" in message
     assert "--download-goodbooks" in message
+
+
+def test_alembic_upgrade_creates_schema(tmp_path):
+    migration_db = tmp_path / "migration_test.db"
+    alembic_cfg = Config("alembic.ini")
+    alembic_cfg.set_main_option("sqlalchemy.url", f"sqlite:///{migration_db.as_posix()}")
+
+    command.upgrade(alembic_cfg, "head")
+
+    import sqlite3
+
+    conn = sqlite3.connect(migration_db)
+    tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+    versions = conn.execute("SELECT version_num FROM alembic_version").fetchone()
+    conn.close()
+
+    assert "books" in tables
+    assert "users" in tables
+    assert "reviews" in tables
+    assert versions[0] == "5e39c2ff8013"
 
 
 def test_openapi_uses_framework_default_generation(client):
