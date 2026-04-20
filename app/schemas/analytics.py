@@ -54,6 +54,21 @@ class PublicationDecadeItem(BaseModel):
     count: int
 
 
+class CreationDisclosureDistributionItem(BaseModel):
+    creation_disclosure: str
+    count: int
+
+
+class ModerationStatusDistributionItem(BaseModel):
+    moderation_status: str
+    count: int
+
+
+class WebNovelTranslationDistributionItem(BaseModel):
+    translation_status: str
+    count: int
+
+
 class PreferredGenreItem(BaseModel):
     genre: str
     average_rating_given: float
@@ -72,6 +87,7 @@ class RecommendationItem(BaseModel):
 
 class RecommendationResponse(BaseModel):
     user_id: int
+    content_preference_applied: str = "any"
     preferred_genre: Optional[str] = None
     preferred_language: Optional[str] = None
     preference_summary: list[PreferredGenreItem]

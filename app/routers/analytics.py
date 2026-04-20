@@ -9,8 +9,10 @@ from app.models import Book, Review, User
 from app.schemas.analytics import (
     AuthorPerformanceItem,
     BooksPerYearItem,
+    CreationDisclosureDistributionItem,
     GenreDistributionItem,
     LanguageDistributionItem,
+    ModerationStatusDistributionItem,
     MostReviewedBook,
     PreferredGenreItem,
     PublicationDecadeItem,
@@ -20,6 +22,7 @@ from app.schemas.analytics import (
     SourceDistributionItem,
     TopRatedBook,
     UserProfileResponse,
+    WebNovelTranslationDistributionItem,
 )
 
 router = APIRouter(prefix="/analytics", tags=["Analytics"])
@@ -173,12 +176,70 @@ def publication_decade_distribution(db: Session = Depends(get_db)):
 
 
 @router.get(
+    "/creation-disclosure-distribution",
+    response_model=list[CreationDisclosureDistributionItem],
+    summary="Creation disclosure distribution",
+    description="Count how many books are marked as human-only, AI-assisted, AI-generated, or unknown.",
+)
+def creation_disclosure_distribution(db: Session = Depends(get_db)):
+    rows = (
+        db.query(Book.creation_disclosure, func.count(Book.id))
+        .group_by(Book.creation_disclosure)
+        .order_by(func.count(Book.id).desc(), Book.creation_disclosure.asc())
+        .all()
+    )
+    return [{"creation_disclosure": creation_disclosure, "count": count} for creation_disclosure, count in rows]
+
+
+@router.get(
+    "/moderation-status-distribution",
+    response_model=list[ModerationStatusDistributionItem],
+    summary="Moderation status distribution",
+    description="Show how many books are unreviewed, verified, flagged, or disputed in the provenance workflow.",
+)
+def moderation_status_distribution(db: Session = Depends(get_db)):
+    rows = (
+        db.query(Book.moderation_status, func.count(Book.id))
+        .group_by(Book.moderation_status)
+        .order_by(func.count(Book.id).desc(), Book.moderation_status.asc())
+        .all()
+    )
+    return [{"moderation_status": moderation_status, "count": count} for moderation_status, count in rows]
+
+
+@router.get(
+    "/web-novel-translation-distribution",
+    response_model=list[WebNovelTranslationDistributionItem],
+    summary="Web novel translation distribution",
+    description="Show translation-status counts for books classified as web novels.",
+)
+def web_novel_translation_distribution(db: Session = Depends(get_db)):
+    rows = (
+        db.query(Book.translation_status, func.count(Book.id))
+        .filter(Book.origin_type == "web_novel")
+        .group_by(Book.translation_status)
+        .order_by(func.count(Book.id).desc(), Book.translation_status.asc())
+        .all()
+    )
+    return [{"translation_status": translation_status, "count": count} for translation_status, count in rows]
+
+
+@router.get(
     "/recommendations/{user_id}",
     response_model=RecommendationResponse,
     summary="Generate recommendations",
     description="Build an explainable recommendation shortlist using the user's review history, genre affinity, language preference, community ratings, and popularity signals.",
 )
-def recommendations(user_id: int, limit: int = Query(default=5, ge=1, le=20), db: Session = Depends(get_db)):
+def recommendations(
+    user_id: int,
+    content_preference: str = Query(
+        default="any",
+        pattern="^(human_only|allow_ai_assisted|any)$",
+        description="Filter recommendations by creation disclosure. Use human_only, allow_ai_assisted, or any.",
+    ),
+    limit: int = Query(default=5, ge=1, le=20),
+    db: Session = Depends(get_db),
+):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -194,6 +255,7 @@ def recommendations(user_id: int, limit: int = Query(default=5, ge=1, le=20), db
     if not preferred_genres:
         return {
             "user_id": user_id,
+            "content_preference_applied": content_preference,
             "preferred_genre": None,
             "preferred_language": None,
             "preference_summary": [],
@@ -228,6 +290,10 @@ def recommendations(user_id: int, limit: int = Query(default=5, ge=1, le=20), db
     candidate_query = db.query(Book).filter(~Book.id.in_(reviewed_book_ids))
     if top_genres:
         candidate_query = candidate_query.filter(Book.genre.in_(top_genres))
+    if content_preference == "human_only":
+        candidate_query = candidate_query.filter(Book.creation_disclosure == "human_only")
+    elif content_preference == "allow_ai_assisted":
+        candidate_query = candidate_query.filter(Book.creation_disclosure.in_(("human_only", "ai_assisted")))
     candidates = (
         candidate_query
         .order_by(Book.average_rating.desc(), Book.ratings_count.desc(), Book.id.desc())
@@ -250,6 +316,15 @@ def recommendations(user_id: int, limit: int = Query(default=5, ge=1, le=20), db
         if preferred_year and book.published_year:
             distance = abs(book.published_year - preferred_year)
             year_component = max(0.0, 0.08 - min(distance / 100.0, 0.08))
+        moderation_component = 0.06 if book.moderation_status == "verified" else 0.0
+        disclosure_component = 0.0
+        risk_penalty = 0.0
+        if book.creation_disclosure == "human_only":
+            disclosure_component = 0.05
+        elif book.creation_disclosure == "ai_assisted" and content_preference != "human_only":
+            disclosure_component = 0.01
+        if book.ai_risk_score is not None:
+            risk_penalty = min(book.ai_risk_score * 0.08, 0.08)
 
         score = (
             genre_component * 0.4
@@ -257,6 +332,9 @@ def recommendations(user_id: int, limit: int = Query(default=5, ge=1, le=20), db
             + popularity_component * 0.18
             + language_component
             + year_component
+            + moderation_component
+            + disclosure_component
+            - risk_penalty
         )
         reasons = [f"Matches your interest in {book.genre}."]
         if preferred_language and book.language_code == preferred_language:
@@ -265,6 +343,12 @@ def recommendations(user_id: int, limit: int = Query(default=5, ge=1, le=20), db
             reasons.append(f"Strong community rating of {book.average_rating:.2f}.")
         if book.ratings_count >= 50000:
             reasons.append(f"Backed by high reader engagement ({book.ratings_count} ratings).")
+        if book.moderation_status == "verified":
+            reasons.append("Provenance metadata has been platform-verified.")
+        if book.creation_disclosure == "human_only":
+            reasons.append("Marked as fully human-created content.")
+        elif book.creation_disclosure == "ai_assisted":
+            reasons.append("Marked as AI-assisted content rather than fully AI-generated.")
         scored_recommendations.append((score, book, reasons[:3]))
 
     scored_recommendations.sort(
@@ -275,6 +359,7 @@ def recommendations(user_id: int, limit: int = Query(default=5, ge=1, le=20), db
 
     return {
         "user_id": user_id,
+        "content_preference_applied": content_preference,
         "preferred_genre": top_genre,
         "preferred_language": preferred_language,
         "preference_summary": [
@@ -283,7 +368,7 @@ def recommendations(user_id: int, limit: int = Query(default=5, ge=1, le=20), db
         ],
         "rationale": (
             "Recommendations combine your highest-rated genres, overall book quality, reader popularity, "
-            "and language affinity to produce a ranked shortlist."
+            "language affinity, and provenance preferences to produce a ranked shortlist."
         ),
         "recommendations": [
             {

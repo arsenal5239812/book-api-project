@@ -61,7 +61,24 @@ def test_review_requires_auth_and_updates_average(client):
         "ratings_count": 80000,
         "language_code": "eng",
         "source": "goodbooks-10k",
+        "creation_disclosure": "human_only",
+        "moderation_status": "verified",
+        "ai_risk_score": 0.02,
         "description": "Popular productivity title"
+    }).json()
+    ai_assisted_candidate = client.post("/books", json={
+        "title": "AI Draft Lab",
+        "author": "Jordan Pace",
+        "genre": "Productivity",
+        "published_year": 2021,
+        "average_rating": 4.8,
+        "ratings_count": 90000,
+        "language_code": "eng",
+        "source": "manual",
+        "creation_disclosure": "ai_assisted",
+        "moderation_status": "verified",
+        "ai_risk_score": 0.35,
+        "description": "AI-assisted productivity title"
     }).json()
 
     unauth = client.post("/reviews", json={"book_id": book["id"], "rating": 5, "comment": "Great"})
@@ -82,10 +99,18 @@ def test_review_requires_auth_and_updates_average(client):
     assert recommendations.status_code == 200
     recommendation_payload = recommendations.json()
     assert "rationale" in recommendation_payload
+    assert recommendation_payload["content_preference_applied"] == "any"
     assert recommendation_payload["preference_summary"][0]["genre"] == "Productivity"
     assert recommendation_payload["recommendations"][0]["id"] == recommendation_candidate["id"]
     assert recommendation_payload["recommendations"][0]["score"] > 0
     assert recommendation_payload["recommendations"][0]["reasons"]
+
+    human_only_recommendations = client.get("/analytics/recommendations/1", params={"content_preference": "human_only"})
+    assert human_only_recommendations.status_code == 200
+    human_only_payload = human_only_recommendations.json()
+    assert human_only_payload["content_preference_applied"] == "human_only"
+    assert all(item["id"] != ai_assisted_candidate["id"] for item in human_only_payload["recommendations"])
+    assert all("human_only" not in item for item in [])
 
 
 def test_book_filters_sorting_and_empty_update_validation(client):
@@ -161,6 +186,53 @@ def test_book_filters_sorting_and_empty_update_validation(client):
     sorted_by_popularity = client.get("/books", params={"sort_by": "ratings_count", "sort_order": "desc", "limit": 1})
     assert sorted_by_popularity.status_code == 200
     assert sorted_by_popularity.json()[0]["ratings_count"] == 2500
+
+
+def test_book_provenance_update_and_filters(client):
+    create = client.post("/books", json={
+        "title": "Celestial Archive",
+        "author": "Lin Yue",
+        "genre": "Fantasy",
+        "published_year": 2023,
+        "average_rating": 4.4,
+        "description": "Translated serial fantasy work"
+    })
+    assert create.status_code == 201
+    book_id = create.json()["id"]
+
+    provenance = client.put(f"/books/{book_id}/provenance", json={
+        "origin_type": "web_novel",
+        "source_platform": "qidian",
+        "original_language": "zh",
+        "translation_status": "translated",
+        "creation_disclosure": "human_only",
+        "disclosure_source": "manual_admin",
+        "moderation_status": "verified",
+        "ai_risk_score": 0.08,
+        "provenance_notes": "Translated Chinese web novel with manually curated provenance metadata."
+    })
+    assert provenance.status_code == 200
+    payload = provenance.json()
+    assert payload["origin_type"] == "web_novel"
+    assert payload["source_platform"] == "qidian"
+    assert payload["creation_disclosure"] == "human_only"
+    assert payload["moderation_status"] == "verified"
+    assert payload["ai_risk_score"] == 0.08
+
+    filtered = client.get("/books", params={
+        "origin_type": "web_novel",
+        "translation_status": "translated",
+        "creation_disclosure": "human_only",
+        "moderation_status": "verified",
+        "max_ai_risk_score": 0.10,
+        "search": "curated provenance",
+    })
+    assert filtered.status_code == 200
+    assert len(filtered.json()) == 1
+    assert filtered.json()[0]["id"] == book_id
+
+    empty_provenance = client.put(f"/books/{book_id}/provenance", json={})
+    assert empty_provenance.status_code == 400
 
 
 def test_duplicate_review_for_same_book_is_rejected(client):
@@ -263,6 +335,8 @@ def test_metadata_analytics_endpoints(client):
         "ratings_count": 12000,
         "language_code": "eng",
         "source": "goodbooks-10k",
+        "creation_disclosure": "human_only",
+        "moderation_status": "verified",
         "description": "Analytics engineering guide"
     })
     client.post("/books", json={
@@ -274,6 +348,10 @@ def test_metadata_analytics_endpoints(client):
         "ratings_count": 3000,
         "language_code": "spa",
         "source": "manual",
+        "origin_type": "web_novel",
+        "translation_status": "translated",
+        "creation_disclosure": "ai_assisted",
+        "moderation_status": "flagged",
         "description": "Mystery novel"
     })
     client.post("/books", json={
@@ -285,6 +363,10 @@ def test_metadata_analytics_endpoints(client):
         "ratings_count": 64000,
         "language_code": "eng",
         "source": "goodbooks-10k",
+        "origin_type": "web_novel",
+        "translation_status": "original",
+        "creation_disclosure": "human_only",
+        "moderation_status": "verified",
         "description": "Fantasy epic"
     })
 
@@ -312,6 +394,24 @@ def test_metadata_analytics_endpoints(client):
     assert decades["2000s"] == 1
     assert decades["2010s"] == 1
     assert decades["2020s"] == 1
+
+    creation_disclosure = client.get("/analytics/creation-disclosure-distribution")
+    assert creation_disclosure.status_code == 200
+    disclosure_counts = {item["creation_disclosure"]: item["count"] for item in creation_disclosure.json()}
+    assert disclosure_counts["human_only"] == 2
+    assert disclosure_counts["ai_assisted"] == 1
+
+    moderation_distribution = client.get("/analytics/moderation-status-distribution")
+    assert moderation_distribution.status_code == 200
+    moderation_counts = {item["moderation_status"]: item["count"] for item in moderation_distribution.json()}
+    assert moderation_counts["verified"] == 2
+    assert moderation_counts["flagged"] == 1
+
+    web_novel_translation = client.get("/analytics/web-novel-translation-distribution")
+    assert web_novel_translation.status_code == 200
+    translation_counts = {item["translation_status"]: item["count"] for item in web_novel_translation.json()}
+    assert translation_counts["translated"] == 1
+    assert translation_counts["original"] == 1
 
 
 def test_auth_validation_and_duplicate_registration(client):
