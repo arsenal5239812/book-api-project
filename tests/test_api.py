@@ -235,6 +235,104 @@ def test_book_provenance_update_and_filters(client):
     assert empty_provenance.status_code == 400
 
 
+def test_similar_books_respects_provenance_and_content_preference(client):
+    anchor = client.post("/books", json={
+        "title": "Celestial Archive",
+        "author": "Lin Yue",
+        "genre": "Fantasy",
+        "published_year": 2023,
+        "average_rating": 4.4,
+        "language_code": "eng",
+        "description": "Anchor title"
+    }).json()
+    client.put(f"/books/{anchor['id']}/provenance", json={
+        "origin_type": "web_novel",
+        "source_platform": "qidian",
+        "original_language": "zh",
+        "translation_status": "translated",
+        "creation_disclosure": "human_only",
+        "moderation_status": "verified",
+        "ai_risk_score": 0.03,
+        "provenance_notes": "Anchor provenance"
+    })
+
+    strong_match = client.post("/books", json={
+        "title": "Star Scroll",
+        "author": "Mei Dao",
+        "genre": "Fantasy",
+        "published_year": 2024,
+        "average_rating": 4.7,
+        "ratings_count": 18000,
+        "language_code": "eng",
+        "description": "Strong match"
+    }).json()
+    client.put(f"/books/{strong_match['id']}/provenance", json={
+        "origin_type": "web_novel",
+        "source_platform": "qidian",
+        "original_language": "zh",
+        "translation_status": "translated",
+        "creation_disclosure": "human_only",
+        "moderation_status": "verified",
+        "ai_risk_score": 0.02,
+        "provenance_notes": "Strong similarity"
+    })
+
+    ai_assisted_match = client.post("/books", json={
+        "title": "Machine Lantern",
+        "author": "Neo Draft",
+        "genre": "Fantasy",
+        "published_year": 2022,
+        "average_rating": 4.8,
+        "ratings_count": 25000,
+        "language_code": "eng",
+        "description": "AI assisted fantasy"
+    }).json()
+    client.put(f"/books/{ai_assisted_match['id']}/provenance", json={
+        "origin_type": "web_novel",
+        "source_platform": "qidian",
+        "original_language": "zh",
+        "translation_status": "translated",
+        "creation_disclosure": "ai_assisted",
+        "moderation_status": "verified",
+        "ai_risk_score": 0.31,
+        "provenance_notes": "AI assisted candidate"
+    })
+
+    off_genre = client.post("/books", json={
+        "title": "Query Harbour",
+        "author": "Data Wave",
+        "genre": "Data",
+        "published_year": 2023,
+        "average_rating": 4.9,
+        "ratings_count": 60000,
+        "language_code": "eng",
+        "description": "Off genre title"
+    }).json()
+    client.put(f"/books/{off_genre['id']}/provenance", json={
+        "origin_type": "traditional_published",
+        "source_platform": "goodreads",
+        "original_language": "en",
+        "translation_status": "original",
+        "creation_disclosure": "human_only",
+        "moderation_status": "verified",
+        "ai_risk_score": 0.01,
+        "provenance_notes": "Not very similar"
+    })
+
+    similar = client.get(f"/books/{anchor['id']}/similar")
+    assert similar.status_code == 200
+    payload = similar.json()
+    assert payload[0]["id"] == strong_match["id"]
+    assert payload[0]["similarity_score"] >= payload[-1]["similarity_score"]
+    assert payload[0]["similarity_reasons"]
+
+    human_only = client.get(f"/books/{anchor['id']}/similar", params={"content_preference": "human_only"})
+    assert human_only.status_code == 200
+    human_only_ids = [item["id"] for item in human_only.json()]
+    assert strong_match["id"] in human_only_ids
+    assert ai_assisted_match["id"] not in human_only_ids
+
+
 def test_duplicate_review_for_same_book_is_rejected(client):
     headers = register_and_login(client)
     book = client.post("/books", json={

@@ -1,3 +1,5 @@
+import math
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
@@ -5,7 +7,7 @@ from typing import Optional
 
 from app.database import get_db
 from app.models import Book
-from app.schemas.book import BookCreate, BookProvenanceUpdate, BookRead, BookUpdate
+from app.schemas.book import BookCreate, BookProvenanceUpdate, BookRead, BookUpdate, SimilarBookItem
 
 router = APIRouter(prefix="/books", tags=["Books"])
 
@@ -105,6 +107,114 @@ def get_book(book_id: int, db: Session = Depends(get_db)):
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
     return book
+
+
+@router.get(
+    "/{book_id}/similar",
+    response_model=list[SimilarBookItem],
+    summary="Find similar books",
+    description="Discover books similar to a selected title using genre, language, publication era, provenance metadata, and content-preference-aware filtering.",
+)
+def similar_books(
+    book_id: int,
+    content_preference: str = Query(
+        default="any",
+        pattern="^(human_only|allow_ai_assisted|any)$",
+        description="Filter similar titles by creation disclosure. Use human_only, allow_ai_assisted, or any.",
+    ),
+    limit: int = Query(default=5, ge=1, le=20, description="Maximum number of similar books to return."),
+    db: Session = Depends(get_db),
+):
+    anchor = db.query(Book).filter(Book.id == book_id).first()
+    if not anchor:
+        raise HTTPException(status_code=404, detail="Book not found")
+
+    candidate_query = db.query(Book).filter(Book.id != book_id)
+    if content_preference == "human_only":
+        candidate_query = candidate_query.filter(Book.creation_disclosure == "human_only")
+    elif content_preference == "allow_ai_assisted":
+        candidate_query = candidate_query.filter(Book.creation_disclosure.in_(("human_only", "ai_assisted")))
+
+    genre_candidates = candidate_query.filter(Book.genre == anchor.genre).all()
+    if genre_candidates:
+        candidates = genre_candidates
+    else:
+        candidates = candidate_query.limit(250).all()
+
+    max_ratings_count = max((candidate.ratings_count for candidate in candidates), default=1)
+    scored_candidates = []
+    for candidate in candidates:
+        score = 0.0
+        reasons = []
+
+        if candidate.genre == anchor.genre:
+            score += 0.34
+            reasons.append(f"Shares the same genre ({anchor.genre}).")
+        elif anchor.genre != "General":
+            score += 0.08
+
+        if anchor.language_code and candidate.language_code == anchor.language_code:
+            score += 0.12
+            reasons.append(f"Matches the same language code ({anchor.language_code}).")
+
+        if anchor.origin_type != "unknown" and candidate.origin_type == anchor.origin_type:
+            score += 0.12
+            reasons.append(f"Shares the same origin type ({anchor.origin_type}).")
+
+        if anchor.translation_status != "unknown" and candidate.translation_status == anchor.translation_status:
+            score += 0.08
+            reasons.append(f"Shares the same translation status ({anchor.translation_status}).")
+
+        if anchor.creation_disclosure != "unknown" and candidate.creation_disclosure == anchor.creation_disclosure:
+            score += 0.08
+            reasons.append(f"Shares the same creation disclosure ({anchor.creation_disclosure}).")
+
+        if anchor.source_platform != "manual" and candidate.source_platform == anchor.source_platform:
+            score += 0.07
+            reasons.append(f"Comes from the same source platform ({anchor.source_platform}).")
+
+        if anchor.original_language and candidate.original_language == anchor.original_language:
+            score += 0.05
+            reasons.append(f"Shares the same original language ({anchor.original_language}).")
+
+        if anchor.published_year and candidate.published_year:
+            year_distance = abs(candidate.published_year - anchor.published_year)
+            year_score = max(0.0, 0.08 - min(year_distance / 100.0, 0.08))
+            score += year_score
+            if year_score >= 0.04:
+                reasons.append("Published in a similar era.")
+
+        popularity_score = (
+            min(math.log1p(candidate.ratings_count) / math.log1p(max_ratings_count), 1.0) * 0.06
+            if max_ratings_count
+            else 0.0
+        )
+        score += popularity_score
+
+        if candidate.moderation_status == "verified":
+            score += 0.04
+            reasons.append("Provenance metadata is verified.")
+
+        if candidate.ai_risk_score is not None:
+            score -= min(candidate.ai_risk_score * 0.05, 0.05)
+            if candidate.ai_risk_score <= 0.1:
+                reasons.append("Low AI risk score.")
+
+        scored_candidates.append((round(score, 4), candidate, reasons[:4]))
+
+    scored_candidates.sort(
+        key=lambda item: (item[0], item[1].average_rating, item[1].ratings_count, item[1].id),
+        reverse=True,
+    )
+
+    return [
+        SimilarBookItem(
+            **BookRead.model_validate(candidate).model_dump(),
+            similarity_score=score,
+            similarity_reasons=reasons or ["General metadata similarity match."],
+        )
+        for score, candidate, reasons in scored_candidates[:limit]
+    ]
 
 @router.put(
     "/{book_id}",

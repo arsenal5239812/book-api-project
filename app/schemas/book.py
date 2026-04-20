@@ -72,3 +72,8 @@ class BookRead(BookBase):
 
     id: int
     created_at: Optional[datetime] = None
+
+
+class SimilarBookItem(BookRead):
+    similarity_score: float
+    similarity_reasons: list[str]
