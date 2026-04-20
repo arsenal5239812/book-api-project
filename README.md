@@ -38,6 +38,15 @@ A FastAPI coursework project that exposes a SQL-backed API for book metadata, re
 ## Public dataset support
 The project can import the public `goodbooks-10k` dataset to create a stronger demo for analytics and recommendation features.
 
+## Dataset source declaration
+The real public dataset used by this project is `goodbooks-10k`.
+
+Source references:
+- Kaggle dataset page: [goodbooks-10k](https://www.kaggle.com/datasets/zygmunt/goodbooks-10k)
+- Upstream source used by the importer: [zygmuntz/goodbooks-10k](https://github.com/zygmuntz/goodbooks-10k)
+
+This project downloads the CSV files from the upstream GitHub repository because the importer needs direct file URLs for `books.csv`, `tags.csv`, and `book_tags.csv`.
+
 Imported metadata includes:
 - `ratings_count`
 - `isbn13`

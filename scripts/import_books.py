@@ -1,5 +1,9 @@
 """Import books from either a simple local CSV or the public goodbooks-10k dataset.
 
+Dataset source:
+  Kaggle listing: https://www.kaggle.com/datasets/zygmunt/goodbooks-10k
+  Upstream CSV source used by this importer: https://github.com/zygmuntz/goodbooks-10k
+
 Examples:
   python scripts/import_books.py scripts/sample_books.csv
   python scripts/import_books.py --goodbooks-dir scripts/goodbooks-10k --limit 2000
