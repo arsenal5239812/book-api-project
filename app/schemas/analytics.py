@@ -1,7 +1,7 @@
 from datetime import datetime
+from typing import Optional
 
 from pydantic import BaseModel
-from typing import Optional
 
 
 class TopRatedBook(BaseModel):
@@ -27,22 +27,56 @@ class BooksPerYearItem(BaseModel):
     count: int
 
 
-class RecommendationItem(BaseModel):
-    id: int
-    title: str
+class LanguageDistributionItem(BaseModel):
+    language_code: str
+    count: int
+
+
+class SourceDistributionItem(BaseModel):
+    source: str
+    count: int
+
+
+class RatingBandItem(BaseModel):
+    band: str
+    count: int
+
+
+class AuthorPerformanceItem(BaseModel):
+    author: str
+    book_count: int
     average_rating: float
+    total_ratings_count: int
 
 
-class RecommendationResponse(BaseModel):
-    user_id: int
-    preferred_genre: Optional[str] = None
-    rationale: str
-    recommendations: list[RecommendationItem]
+class PublicationDecadeItem(BaseModel):
+    decade: str
+    count: int
 
 
 class PreferredGenreItem(BaseModel):
     genre: str
     average_rating_given: float
+
+
+class RecommendationItem(BaseModel):
+    id: int
+    title: str
+    average_rating: float
+    ratings_count: int
+    genre: str
+    language_code: Optional[str] = None
+    score: float
+    reasons: list[str]
+
+
+class RecommendationResponse(BaseModel):
+    user_id: int
+    preferred_genre: Optional[str] = None
+    preferred_language: Optional[str] = None
+    preference_summary: list[PreferredGenreItem]
+    rationale: str
+    recommendations: list[RecommendationItem]
 
 
 class RecentReviewItem(BaseModel):

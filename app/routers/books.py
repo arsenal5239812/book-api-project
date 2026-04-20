@@ -28,7 +28,7 @@ def list_books(
     max_year: Optional[int] = Query(default=None, ge=0, le=2100),
     min_rating: Optional[float] = Query(default=None, ge=0.0, le=5.0),
     min_ratings_count: Optional[int] = Query(default=None, ge=0),
-    sort_by: str = Query(default="created_at", pattern="^(created_at|title|published_year|average_rating)$"),
+    sort_by: str = Query(default="created_at", pattern="^(created_at|title|published_year|average_rating|ratings_count)$"),
     sort_order: str = Query(default="desc", pattern="^(asc|desc)$"),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=100),

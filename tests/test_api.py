@@ -49,6 +49,17 @@ def test_review_requires_auth_and_updates_average(client):
         "average_rating": 0.0,
         "description": "Focus and concentration"
     }).json()
+    recommendation_candidate = client.post("/books", json={
+        "title": "The Focus Formula",
+        "author": "Jordan Pace",
+        "genre": "Productivity",
+        "published_year": 2019,
+        "average_rating": 4.7,
+        "ratings_count": 80000,
+        "language_code": "eng",
+        "source": "goodbooks-10k",
+        "description": "Popular productivity title"
+    }).json()
 
     unauth = client.post("/reviews", json={"book_id": book["id"], "rating": 5, "comment": "Great"})
     assert unauth.status_code == 401
@@ -66,7 +77,12 @@ def test_review_requires_auth_and_updates_average(client):
 
     recommendations = client.get("/analytics/recommendations/1")
     assert recommendations.status_code == 200
-    assert "rationale" in recommendations.json()
+    recommendation_payload = recommendations.json()
+    assert "rationale" in recommendation_payload
+    assert recommendation_payload["preference_summary"][0]["genre"] == "Productivity"
+    assert recommendation_payload["recommendations"][0]["id"] == recommendation_candidate["id"]
+    assert recommendation_payload["recommendations"][0]["score"] > 0
+    assert recommendation_payload["recommendations"][0]["reasons"]
 
 
 def test_book_filters_sorting_and_empty_update_validation(client):
@@ -139,6 +155,10 @@ def test_book_filters_sorting_and_empty_update_validation(client):
     assert metadata_check.status_code == 200
     assert metadata_check.json()[0]["isbn13"] == "9780134757599"
 
+    sorted_by_popularity = client.get("/books", params={"sort_by": "ratings_count", "sort_order": "desc", "limit": 1})
+    assert sorted_by_popularity.status_code == 200
+    assert sorted_by_popularity.json()[0]["ratings_count"] == 2500
+
 
 def test_duplicate_review_for_same_book_is_rejected(client):
     headers = register_and_login(client)
@@ -204,6 +224,85 @@ def test_review_filters_permissions_and_user_profile(client):
     assert profile_json["review_count"] == 2
     assert profile_json["preferred_genres"][0]["genre"] == "Software"
     assert len(profile_json["recent_reviews"]) == 2
+
+    me = client.get("/users/me", headers=alice_headers)
+    assert me.status_code == 200
+    assert me.json()["email"] == "alice@example.com"
+
+
+def test_metadata_analytics_endpoints(client):
+    client.post("/books", json={
+        "title": "Data Warehouse",
+        "author": "Ana Data",
+        "genre": "Data",
+        "published_year": 2022,
+        "average_rating": 4.6,
+        "ratings_count": 12000,
+        "language_code": "eng",
+        "source": "goodbooks-10k",
+        "description": "Analytics engineering guide"
+    })
+    client.post("/books", json={
+        "title": "Hidden Signals",
+        "author": "Leo Reader",
+        "genre": "Mystery",
+        "published_year": 2014,
+        "average_rating": 3.7,
+        "ratings_count": 3000,
+        "language_code": "spa",
+        "source": "manual",
+        "description": "Mystery novel"
+    })
+    client.post("/books", json={
+        "title": "Legend Falls",
+        "author": "Mira Tale",
+        "genre": "Fantasy",
+        "published_year": 2008,
+        "average_rating": 4.8,
+        "ratings_count": 64000,
+        "language_code": "eng",
+        "source": "goodbooks-10k",
+        "description": "Fantasy epic"
+    })
+
+    languages = client.get("/analytics/language-distribution")
+    assert languages.status_code == 200
+    assert languages.json()[0]["language_code"] == "eng"
+
+    sources = client.get("/analytics/source-distribution")
+    assert sources.status_code == 200
+    assert sources.json()[0]["source"] == "goodbooks-10k"
+
+    rating_bands = client.get("/analytics/rating-bands")
+    assert rating_bands.status_code == 200
+    bands = {item["band"]: item["count"] for item in rating_bands.json()}
+    assert bands["4_5_and_above"] == 2
+    assert bands["3_to_4"] == 1
+
+    author_performance = client.get("/analytics/author-performance")
+    assert author_performance.status_code == 200
+    assert author_performance.json()[0]["average_rating"] >= author_performance.json()[-1]["average_rating"]
+
+    decade_distribution = client.get("/analytics/publication-decade-distribution")
+    assert decade_distribution.status_code == 200
+    decades = {item["decade"]: item["count"] for item in decade_distribution.json()}
+    assert decades["2000s"] == 1
+    assert decades["2010s"] == 1
+    assert decades["2020s"] == 1
+
+
+def test_auth_validation_and_duplicate_registration(client):
+    short_password = client.post("/auth/register", json={
+        "name": "Tiny Password",
+        "email": "tiny@example.com",
+        "password": "short",
+    })
+    assert short_password.status_code == 422
+
+    user = {"name": "Repeat User", "email": "repeat@example.com", "password": "secret123"}
+    assert client.post("/auth/register", json=user).status_code == 201
+    duplicate = client.post("/auth/register", json=user)
+    assert duplicate.status_code == 400
 
 
 def test_openapi_uses_framework_default_generation(client):
