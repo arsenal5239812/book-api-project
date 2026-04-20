@@ -16,6 +16,7 @@ A FastAPI coursework project that exposes a SQL-backed API for book metadata, re
   - Provenance filtering by origin type, source platform, translation status, creation disclosure, moderation status, and AI risk score
   - Search, sorting, and pagination on `GET /books`
   - Dedicated provenance update workflow via `PUT /books/{book_id}/provenance`
+  - Provenance-aware similar book discovery via `GET /books/{book_id}/similar`
 - Users:
   - Register and log in with JWT
   - Read user listings and individual profiles
@@ -65,6 +66,8 @@ The recommendation endpoint can also apply a reader-facing content preference:
 - `allow_ai_assisted`
 - `any`
 
+The similar-book discovery endpoint also uses provenance-aware similarity scoring, so discovery is influenced by genre, language, source platform, moderation status, and content-origin metadata rather than only basic catalogue fields.
+
 This allows the project to demonstrate not only recommendation logic, but also how provenance metadata can influence discovery and trust.
 
 ## Public dataset support
@@ -92,6 +95,7 @@ The importer also maps high-signal Goodreads tags into coursework-friendly genre
 ## Tech stack
 - FastAPI
 - SQLAlchemy
+- Alembic
 - PostgreSQL for deployment or coursework submission
 - SQLite fallback for local development and tests
 - JWT with `python-jose`
@@ -157,6 +161,7 @@ Create a new migration after model changes:
 - Filter books with `source=goodbooks-10k`
 - Create or update provenance metadata for one or two books with `PUT /books/{book_id}/provenance`
 - Filter books by `origin_type`, `creation_disclosure`, or `moderation_status`
+- Show `GET /books/{book_id}/similar` with `content_preference=human_only`
 - Create reviews for a few books
 - Show `/analytics/user-profile/{user_id}`
 - Show provenance analytics such as `/analytics/creation-disclosure-distribution`
