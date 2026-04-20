@@ -1,6 +1,9 @@
 import types
+from pathlib import Path
 
 from app.main import app
+from app.models import Book
+from scripts.import_books import import_goodbooks, import_simple_csv
 
 
 def register_and_login(client):
@@ -230,6 +233,26 @@ def test_review_filters_permissions_and_user_profile(client):
     assert me.json()["email"] == "alice@example.com"
 
 
+def test_users_me_requires_auth(client):
+    response = client.get("/users/me")
+    assert response.status_code == 401
+
+
+def test_recommendations_for_user_with_no_reviews_are_empty(client):
+    user = {"name": "No Reviews Yet", "email": "empty@example.com", "password": "secret123"}
+    create = client.post("/auth/register", json=user)
+    assert create.status_code == 201
+
+    recommendations = client.get(f"/analytics/recommendations/{create.json()['id']}")
+    assert recommendations.status_code == 200
+    payload = recommendations.json()
+    assert payload["preferred_genre"] is None
+    assert payload["preferred_language"] is None
+    assert payload["preference_summary"] == []
+    assert payload["recommendations"] == []
+    assert "No reviews available yet" in payload["rationale"]
+
+
 def test_metadata_analytics_endpoints(client):
     client.post("/books", json={
         "title": "Data Warehouse",
@@ -303,6 +326,46 @@ def test_auth_validation_and_duplicate_registration(client):
     assert client.post("/auth/register", json=user).status_code == 201
     duplicate = client.post("/auth/register", json=user)
     assert duplicate.status_code == 400
+
+
+def test_importer_skips_duplicates_and_preserves_metadata(db, tmp_path):
+    csv_path = tmp_path / "books.csv"
+    csv_path.write_text(
+        "\n".join(
+            [
+                "title,author,genre,published_year,average_rating,description,ratings_count,isbn13,language_code,source",
+                "Focus Engine,Alex Writer,Productivity,2022,4.6,Popular title,15000,9781234567890,eng,goodbooks-10k",
+                "Focus Engine,Alex Writer,Productivity,2022,4.6,Popular title,15000,9781234567890,eng,goodbooks-10k",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    imported, skipped = import_simple_csv(db, csv_path)
+    assert imported == 1
+    assert skipped == 1
+
+    stored = db.query(Book).all()
+    assert len(stored) == 1
+    assert stored[0].ratings_count == 15000
+    assert stored[0].isbn13 == "9781234567890"
+    assert stored[0].language_code == "eng"
+    assert stored[0].source == "goodbooks-10k"
+
+
+def test_importer_reports_missing_goodbooks_files(db, tmp_path):
+    empty_dataset_dir = Path(tmp_path) / "goodbooks"
+    empty_dataset_dir.mkdir()
+
+    try:
+        import_goodbooks(db, empty_dataset_dir, limit=10, min_ratings_count=0)
+    except SystemExit as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("Expected import_goodbooks to abort when CSV files are missing")
+
+    assert "Missing goodbooks files" in message
+    assert "--download-goodbooks" in message
 
 
 def test_openapi_uses_framework_default_generation(client):

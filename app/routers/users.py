@@ -8,16 +8,31 @@ from app.schemas.user import UserRead
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
-@router.get("", response_model=list[UserRead])
+@router.get(
+    "",
+    response_model=list[UserRead],
+    summary="List users",
+    description="Return all registered users ordered by most recently created first.",
+)
 def list_users(db: Session = Depends(get_db)):
     return db.query(User).order_by(User.id.desc()).all()
 
 
-@router.get("/me", response_model=UserRead)
+@router.get(
+    "/me",
+    response_model=UserRead,
+    summary="Get the current user",
+    description="Return the authenticated user attached to the current bearer token.",
+)
 def get_me(current_user: User = Depends(get_current_user)):
     return current_user
 
-@router.get("/{user_id}", response_model=UserRead)
+@router.get(
+    "/{user_id}",
+    response_model=UserRead,
+    summary="Get a user",
+    description="Retrieve a single user by id.",
+)
 def get_user(user_id: int, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:

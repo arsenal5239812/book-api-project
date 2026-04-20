@@ -9,7 +9,13 @@ from app.schemas.book import BookCreate, BookRead, BookUpdate
 
 router = APIRouter(prefix="/books", tags=["Books"])
 
-@router.post("", response_model=BookRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=BookRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a book",
+    description="Create a new book record with optional public-dataset metadata such as language code, ISBN13, and ratings count.",
+)
 def create_book(book_in: BookCreate, db: Session = Depends(get_db)):
     book = Book(**book_in.model_dump())
     db.add(book)
@@ -17,21 +23,26 @@ def create_book(book_in: BookCreate, db: Session = Depends(get_db)):
     db.refresh(book)
     return book
 
-@router.get("", response_model=list[BookRead])
+@router.get(
+    "",
+    response_model=list[BookRead],
+    summary="List books",
+    description="Browse books with filtering, text search, sorting, and pagination. This endpoint supports both manual entries and imported public-dataset records.",
+)
 def list_books(
-    genre: Optional[str] = Query(default=None),
-    author: Optional[str] = Query(default=None),
-    language_code: Optional[str] = Query(default=None, min_length=1, max_length=10),
-    source: Optional[str] = Query(default=None, min_length=1, max_length=50),
-    search: Optional[str] = Query(default=None, min_length=1, max_length=100),
-    min_year: Optional[int] = Query(default=None, ge=0, le=2100),
-    max_year: Optional[int] = Query(default=None, ge=0, le=2100),
-    min_rating: Optional[float] = Query(default=None, ge=0.0, le=5.0),
-    min_ratings_count: Optional[int] = Query(default=None, ge=0),
-    sort_by: str = Query(default="created_at", pattern="^(created_at|title|published_year|average_rating|ratings_count)$"),
-    sort_order: str = Query(default="desc", pattern="^(asc|desc)$"),
-    skip: int = Query(default=0, ge=0),
-    limit: int = Query(default=20, ge=1, le=100),
+    genre: Optional[str] = Query(default=None, description="Filter by genre using a case-insensitive partial match."),
+    author: Optional[str] = Query(default=None, description="Filter by author using a case-insensitive partial match."),
+    language_code: Optional[str] = Query(default=None, min_length=1, max_length=10, description="Filter by language code such as 'eng'."),
+    source: Optional[str] = Query(default=None, min_length=1, max_length=50, description="Filter by data source, for example 'manual' or 'goodbooks-10k'."),
+    search: Optional[str] = Query(default=None, min_length=1, max_length=100, description="Search across title, author, genre, and description."),
+    min_year: Optional[int] = Query(default=None, ge=0, le=2100, description="Only include books published on or after this year."),
+    max_year: Optional[int] = Query(default=None, ge=0, le=2100, description="Only include books published on or before this year."),
+    min_rating: Optional[float] = Query(default=None, ge=0.0, le=5.0, description="Only include books whose average rating meets this threshold."),
+    min_ratings_count: Optional[int] = Query(default=None, ge=0, description="Only include books with at least this many community ratings."),
+    sort_by: str = Query(default="created_at", pattern="^(created_at|title|published_year|average_rating|ratings_count)$", description="Sort by creation time, title, publication year, average rating, or ratings count."),
+    sort_order: str = Query(default="desc", pattern="^(asc|desc)$", description="Sort ascending or descending."),
+    skip: int = Query(default=0, ge=0, description="Number of matching records to skip for pagination."),
+    limit: int = Query(default=20, ge=1, le=100, description="Maximum number of records to return."),
     db: Session = Depends(get_db),
 ):
     query = db.query(Book)
@@ -64,14 +75,24 @@ def list_books(
         sort_column = desc(sort_column)
     return query.order_by(sort_column, Book.id.desc()).offset(skip).limit(limit).all()
 
-@router.get("/{book_id}", response_model=BookRead)
+@router.get(
+    "/{book_id}",
+    response_model=BookRead,
+    summary="Get a book",
+    description="Retrieve a single book by its internal numeric identifier.",
+)
 def get_book(book_id: int, db: Session = Depends(get_db)):
     book = db.query(Book).filter(Book.id == book_id).first()
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
     return book
 
-@router.put("/{book_id}", response_model=BookRead)
+@router.put(
+    "/{book_id}",
+    response_model=BookRead,
+    summary="Update a book",
+    description="Update one or more fields on an existing book. Empty update payloads are rejected.",
+)
 def update_book(book_id: int, book_in: BookUpdate, db: Session = Depends(get_db)):
     book = db.query(Book).filter(Book.id == book_id).first()
     if not book:
@@ -85,7 +106,12 @@ def update_book(book_id: int, book_in: BookUpdate, db: Session = Depends(get_db)
     db.refresh(book)
     return book
 
-@router.delete("/{book_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{book_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a book",
+    description="Delete a book record by id. Returns 204 on success and 404 if the book does not exist.",
+)
 def delete_book(book_id: int, db: Session = Depends(get_db)):
     book = db.query(Book).filter(Book.id == book_id).first()
     if not book:

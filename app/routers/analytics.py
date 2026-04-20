@@ -25,19 +25,34 @@ from app.schemas.analytics import (
 router = APIRouter(prefix="/analytics", tags=["Analytics"])
 
 
-@router.get("/top-rated-books", response_model=list[TopRatedBook])
+@router.get(
+    "/top-rated-books",
+    response_model=list[TopRatedBook],
+    summary="Top-rated books",
+    description="Return the highest-rated books currently stored in the catalogue.",
+)
 def top_rated_books(limit: int = Query(default=5, ge=1, le=20), db: Session = Depends(get_db)):
     books = db.query(Book).order_by(Book.average_rating.desc(), Book.id.desc()).limit(limit).all()
     return [{"id": b.id, "title": b.title, "average_rating": b.average_rating, "genre": b.genre} for b in books]
 
 
-@router.get("/genre-distribution", response_model=list[GenreDistributionItem])
+@router.get(
+    "/genre-distribution",
+    response_model=list[GenreDistributionItem],
+    summary="Genre distribution",
+    description="Count how many books are stored in each genre bucket.",
+)
 def genre_distribution(db: Session = Depends(get_db)):
     rows = db.query(Book.genre, func.count(Book.id)).group_by(Book.genre).all()
     return [{"genre": genre, "count": count} for genre, count in rows]
 
 
-@router.get("/most-reviewed-books", response_model=list[MostReviewedBook])
+@router.get(
+    "/most-reviewed-books",
+    response_model=list[MostReviewedBook],
+    summary="Most-reviewed books",
+    description="Return books ranked by the number of stored user reviews.",
+)
 def most_reviewed_books(limit: int = Query(default=5, ge=1, le=20), db: Session = Depends(get_db)):
     rows = (
         db.query(Book.id, Book.title, func.count(Review.id).label("review_count"))
@@ -50,13 +65,23 @@ def most_reviewed_books(limit: int = Query(default=5, ge=1, le=20), db: Session 
     return [{"id": row.id, "title": row.title, "review_count": row.review_count} for row in rows]
 
 
-@router.get("/books-per-year", response_model=list[BooksPerYearItem])
+@router.get(
+    "/books-per-year",
+    response_model=list[BooksPerYearItem],
+    summary="Books per year",
+    description="Group books by publication year to reveal time-based catalogue distribution.",
+)
 def books_per_year(db: Session = Depends(get_db)):
     rows = db.query(Book.published_year, func.count(Book.id)).group_by(Book.published_year).order_by(Book.published_year).all()
     return [{"published_year": year, "count": count} for year, count in rows if year is not None]
 
 
-@router.get("/language-distribution", response_model=list[LanguageDistributionItem])
+@router.get(
+    "/language-distribution",
+    response_model=list[LanguageDistributionItem],
+    summary="Language distribution",
+    description="Show how many books are stored for each language code.",
+)
 def language_distribution(db: Session = Depends(get_db)):
     rows = (
         db.query(Book.language_code, func.count(Book.id))
@@ -68,7 +93,12 @@ def language_distribution(db: Session = Depends(get_db)):
     return [{"language_code": language_code, "count": count} for language_code, count in rows]
 
 
-@router.get("/source-distribution", response_model=list[SourceDistributionItem])
+@router.get(
+    "/source-distribution",
+    response_model=list[SourceDistributionItem],
+    summary="Source distribution",
+    description="Compare how many books came from manual entry versus imported public datasets.",
+)
 def source_distribution(db: Session = Depends(get_db)):
     rows = (
         db.query(Book.source, func.count(Book.id))
@@ -79,7 +109,12 @@ def source_distribution(db: Session = Depends(get_db)):
     return [{"source": source, "count": count} for source, count in rows]
 
 
-@router.get("/rating-bands", response_model=list[RatingBandItem])
+@router.get(
+    "/rating-bands",
+    response_model=list[RatingBandItem],
+    summary="Rating bands",
+    description="Bucket books into broad average-rating ranges for a quick quality snapshot.",
+)
 def rating_bands(db: Session = Depends(get_db)):
     bands = [
         ("below_3", db.query(func.count(Book.id)).filter(Book.average_rating < 3).scalar() or 0),
@@ -90,7 +125,12 @@ def rating_bands(db: Session = Depends(get_db)):
     return [{"band": band, "count": int(count)} for band, count in bands]
 
 
-@router.get("/author-performance", response_model=list[AuthorPerformanceItem])
+@router.get(
+    "/author-performance",
+    response_model=list[AuthorPerformanceItem],
+    summary="Author performance",
+    description="Aggregate catalogue coverage, average rating, and total ratings count at author level.",
+)
 def author_performance(limit: int = Query(default=10, ge=1, le=50), db: Session = Depends(get_db)):
     rows = (
         db.query(
@@ -116,7 +156,12 @@ def author_performance(limit: int = Query(default=10, ge=1, le=50), db: Session 
     ]
 
 
-@router.get("/publication-decade-distribution", response_model=list[PublicationDecadeItem])
+@router.get(
+    "/publication-decade-distribution",
+    response_model=list[PublicationDecadeItem],
+    summary="Publication decade distribution",
+    description="Group books into publication decades such as 1990s, 2000s, and 2010s.",
+)
 def publication_decade_distribution(db: Session = Depends(get_db)):
     rows = db.query(Book.published_year).filter(Book.published_year.isnot(None)).all()
     counts: dict[str, int] = {}
@@ -127,7 +172,12 @@ def publication_decade_distribution(db: Session = Depends(get_db)):
     return [{"decade": decade, "count": counts[decade]} for decade in sorted(counts.keys())]
 
 
-@router.get("/recommendations/{user_id}", response_model=RecommendationResponse)
+@router.get(
+    "/recommendations/{user_id}",
+    response_model=RecommendationResponse,
+    summary="Generate recommendations",
+    description="Build an explainable recommendation shortlist using the user's review history, genre affinity, language preference, community ratings, and popularity signals.",
+)
 def recommendations(user_id: int, limit: int = Query(default=5, ge=1, le=20), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -251,7 +301,12 @@ def recommendations(user_id: int, limit: int = Query(default=5, ge=1, le=20), db
     }
 
 
-@router.get("/user-profile/{user_id}", response_model=UserProfileResponse)
+@router.get(
+    "/user-profile/{user_id}",
+    response_model=UserProfileResponse,
+    summary="Build a user profile",
+    description="Summarise a user's review activity, preferred genres, average rating behaviour, and most recent reviews.",
+)
 def user_profile(user_id: int, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:

@@ -12,6 +12,8 @@ import sys
 import urllib.request
 from collections import defaultdict
 from pathlib import Path
+from typing import Tuple
+from urllib.error import URLError
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -52,6 +54,13 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def validate_args(args: argparse.Namespace) -> None:
+    if args.limit < 1:
+        raise SystemExit("--limit must be at least 1")
+    if args.min_ratings_count < 0:
+        raise SystemExit("--min-ratings-count cannot be negative")
+
+
 def ensure_schema() -> None:
     Base.metadata.create_all(bind=engine)
 
@@ -81,9 +90,15 @@ def download_goodbooks_files(target_dir: Path) -> None:
     for filename, url in GOODBOOKS_FILES.items():
         destination = target_dir / filename
         if destination.exists():
+            print(f"Using existing {filename} from {target_dir}")
             continue
         print(f"Downloading {filename}...")
-        urllib.request.urlretrieve(url, destination)
+        try:
+            urllib.request.urlretrieve(url, destination)
+        except URLError as exc:
+            raise SystemExit(
+                f"Failed to download {filename} from {url}. Check your internet connection and try again."
+            ) from exc
 
 
 def load_tag_lookup(tags_path: Path) -> dict[str, str]:
@@ -104,14 +119,26 @@ def load_book_genres(book_tags_path: Path, tag_lookup: dict[str, str]) -> dict[s
     return {book_id: infer_genre(tag_scores) for book_id, tag_scores in scores_by_book.items()}
 
 
-def import_simple_csv(db, csv_path: Path) -> int:
-    count = 0
+def import_simple_csv(db, csv_path: Path) -> Tuple[int, int]:
+    imported = 0
+    skipped = 0
+    seen_keys = {
+        (title, author, source)
+        for title, author, source in db.query(Book.title, Book.author, Book.source).all()
+    }
     with csv_path.open("r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
+            title = row.get("title", "Untitled")
+            author = row.get("author", "Unknown")
+            source = row.get("source", "manual")
+            book_key = (title, author, source)
+            if book_key in seen_keys:
+                skipped += 1
+                continue
             book = Book(
-                title=row.get("title", "Untitled"),
-                author=row.get("author", "Unknown"),
+                title=title,
+                author=author,
                 genre=row.get("genre", "General"),
                 published_year=int(row["published_year"]) if row.get("published_year") else None,
                 average_rating=float(row["average_rating"]) if row.get("average_rating") else 0.0,
@@ -119,26 +146,35 @@ def import_simple_csv(db, csv_path: Path) -> int:
                 ratings_count=int(row["ratings_count"]) if row.get("ratings_count") else 0,
                 isbn13=row.get("isbn13"),
                 language_code=row.get("language_code"),
-                source=row.get("source", "manual"),
+                source=source,
             )
             db.add(book)
-            count += 1
+            seen_keys.add(book_key)
+            imported += 1
     db.commit()
-    return count
+    return imported, skipped
 
 
-def import_goodbooks(db, dataset_dir: Path, limit: int, min_ratings_count: int) -> int:
+def import_goodbooks(db, dataset_dir: Path, limit: int, min_ratings_count: int) -> Tuple[int, int]:
     books_path = dataset_dir / "books.csv"
     tags_path = dataset_dir / "tags.csv"
     book_tags_path = dataset_dir / "book_tags.csv"
     missing = [path.name for path in (books_path, tags_path, book_tags_path) if not path.exists()]
     if missing:
-        raise SystemExit(f"Missing goodbooks files in {dataset_dir}: {', '.join(missing)}")
+        raise SystemExit(
+            f"Missing goodbooks files in {dataset_dir}: {', '.join(missing)}. "
+            "Run the importer with --download-goodbooks or place the CSV files in that directory first."
+        )
 
     tag_lookup = load_tag_lookup(tags_path)
     genres_by_book = load_book_genres(book_tags_path, tag_lookup)
 
     imported = 0
+    skipped = 0
+    seen_keys = {
+        (title, author, source)
+        for title, author, source in db.query(Book.title, Book.author, Book.source).all()
+    }
     with books_path.open("r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
@@ -150,9 +186,14 @@ def import_goodbooks(db, dataset_dir: Path, limit: int, min_ratings_count: int) 
 
             goodreads_book_id = row["goodreads_book_id"]
             title = row.get("title") or row.get("original_title") or "Untitled"
+            author = (row.get("authors") or "Unknown")[:255]
+            book_key = (title[:255], author, "goodbooks-10k")
+            if book_key in seen_keys:
+                skipped += 1
+                continue
             book = Book(
                 title=title[:255],
-                author=(row.get("authors") or "Unknown")[:255],
+                author=author,
                 genre=genres_by_book.get(goodreads_book_id, "General"),
                 published_year=int(float(row["original_publication_year"])) if row.get("original_publication_year") else None,
                 average_rating=float(row["average_rating"]) if row.get("average_rating") else 0.0,
@@ -166,13 +207,15 @@ def import_goodbooks(db, dataset_dir: Path, limit: int, min_ratings_count: int) 
                 )[:2000],
             )
             db.add(book)
+            seen_keys.add(book_key)
             imported += 1
     db.commit()
-    return imported
+    return imported, skipped
 
 
 def main() -> None:
     args = parse_args()
+    validate_args(args)
     ensure_schema()
     db = SessionLocal()
     try:
@@ -186,17 +229,27 @@ def main() -> None:
             csv_path = Path(args.csv_path)
             if not csv_path.exists():
                 raise SystemExit(f"File not found: {csv_path}")
-            count = import_simple_csv(db, csv_path)
-            print(f"Imported {count} books from {csv_path}")
+            imported, skipped = import_simple_csv(db, csv_path)
+            print(f"Imported {imported} books from {csv_path}")
+            if skipped:
+                print(f"Skipped {skipped} duplicate rows already present in the database")
             return
 
-        count = import_goodbooks(
+        dataset_dir = Path(args.goodbooks_dir)
+        if not args.download_goodbooks and not dataset_dir.exists():
+            raise SystemExit(
+                f"Dataset directory not found: {dataset_dir}. Run with --download-goodbooks to fetch the files automatically."
+            )
+
+        imported, skipped = import_goodbooks(
             db=db,
-            dataset_dir=Path(args.goodbooks_dir),
+            dataset_dir=dataset_dir,
             limit=args.limit,
             min_ratings_count=args.min_ratings_count,
         )
-        print(f"Imported {count} books from goodbooks-10k in {args.goodbooks_dir}")
+        print(f"Imported {imported} books from goodbooks-10k in {args.goodbooks_dir}")
+        if skipped:
+            print(f"Skipped {skipped} duplicate rows already present in the database")
     finally:
         db.close()
 
