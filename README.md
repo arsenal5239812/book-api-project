@@ -104,10 +104,13 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 Copy-Item .env.example .env
+.\.venv\Scripts\alembic.exe upgrade head
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
 ```
 
 The application loads configuration automatically from `.env`, so database, auth, and documentation settings can be changed without editing source code.
+
+Database schema changes are now managed with Alembic migrations rather than automatic table creation inside the application startup path.
 
 API docs will be available at:
 - `http://127.0.0.1:8000/docs`
@@ -134,6 +137,17 @@ The importer protects against duplicate inserts by skipping books already presen
 ## Run tests
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -q
+```
+
+## Database migrations
+Create the current schema:
+```powershell
+.\.venv\Scripts\alembic.exe upgrade head
+```
+
+Create a new migration after model changes:
+```powershell
+.\.venv\Scripts\alembic.exe revision --autogenerate -m "describe change"
 ```
 
 ## Recommended demo flow
