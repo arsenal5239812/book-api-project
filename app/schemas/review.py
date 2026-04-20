@@ -6,14 +6,14 @@ from pydantic import ConfigDict
 class ReviewBase(BaseModel):
     book_id: int
     rating: int = Field(ge=1, le=5)
-    comment: Optional[str] = None
+    comment: Optional[str] = Field(default=None, max_length=1000)
 
 class ReviewCreate(ReviewBase):
     pass
 
 class ReviewUpdate(BaseModel):
     rating: Optional[int] = Field(default=None, ge=1, le=5)
-    comment: Optional[str] = None
+    comment: Optional[str] = Field(default=None, max_length=1000)
 
 class ReviewRead(ReviewBase):
     model_config = ConfigDict(from_attributes=True)

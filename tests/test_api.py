@@ -66,6 +66,144 @@ def test_review_requires_auth_and_updates_average(client):
 
     recommendations = client.get("/analytics/recommendations/1")
     assert recommendations.status_code == 200
+    assert "rationale" in recommendations.json()
+
+
+def test_book_filters_sorting_and_empty_update_validation(client):
+    client.post("/books", json={
+        "title": "Python Patterns",
+        "author": "Alex Dev",
+        "genre": "Software",
+        "published_year": 2020,
+        "average_rating": 4.6,
+        "description": "Design patterns in Python"
+    })
+    client.post("/books", json={
+        "title": "Quiet Focus",
+        "author": "Alex Writer",
+        "genre": "Productivity",
+        "published_year": 2018,
+        "average_rating": 3.8,
+        "description": "Deep concentration strategies"
+    })
+    client.post("/books", json={
+        "title": "Data Stories",
+        "author": "Jamie Analyst",
+        "genre": "Data",
+        "published_year": 2024,
+        "average_rating": 4.9,
+        "description": "Analytics storytelling"
+    })
+
+    filtered = client.get("/books", params={
+        "search": "Alex",
+        "min_rating": 4.0,
+        "sort_by": "average_rating",
+        "sort_order": "desc",
+    })
+    assert filtered.status_code == 200
+    payload = filtered.json()
+    assert len(payload) == 1
+    assert payload[0]["title"] == "Python Patterns"
+
+    metadata_filtered = client.get("/books", params={
+        "language_code": "eng",
+        "source": "goodbooks-10k",
+        "min_ratings_count": 1000,
+    })
+    assert metadata_filtered.status_code == 200
+    assert metadata_filtered.json() == []
+
+    paged = client.get("/books", params={"sort_by": "published_year", "sort_order": "asc", "skip": 1, "limit": 1})
+    assert paged.status_code == 200
+    assert len(paged.json()) == 1
+    assert paged.json()[0]["title"] == "Python Patterns"
+
+    create = client.post("/books", json={
+        "title": "Refactoring APIs",
+        "author": "Mia Engineer",
+        "genre": "Software",
+        "published_year": 2022,
+        "average_rating": 0.0,
+        "ratings_count": 2500,
+        "isbn13": "9780134757599",
+        "language_code": "eng",
+        "source": "goodbooks-10k",
+        "description": "API improvement techniques"
+    })
+    book_id = create.json()["id"]
+    empty_update = client.put(f"/books/{book_id}", json={})
+    assert empty_update.status_code == 400
+
+    metadata_check = client.get("/books", params={"source": "goodbooks-10k", "language_code": "eng", "min_ratings_count": 2000})
+    assert metadata_check.status_code == 200
+    assert metadata_check.json()[0]["isbn13"] == "9780134757599"
+
+
+def test_duplicate_review_for_same_book_is_rejected(client):
+    headers = register_and_login(client)
+    book = client.post("/books", json={
+        "title": "API Security",
+        "author": "Sam Secure",
+        "genre": "Security",
+        "published_year": 2025,
+        "average_rating": 0.0,
+        "description": "Protecting modern APIs"
+    }).json()
+
+    first_review = client.post("/reviews", headers=headers, json={"book_id": book["id"], "rating": 5, "comment": "Very useful"})
+    assert first_review.status_code == 201
+
+    duplicate_review = client.post("/reviews", headers=headers, json={"book_id": book["id"], "rating": 4, "comment": "Second review"})
+    assert duplicate_review.status_code == 409
+
+
+def test_review_filters_permissions_and_user_profile(client):
+    alice_headers = register_and_login(client)
+    bob = {"name": "Bob", "email": "bob@example.com", "password": "secret123"}
+    assert client.post("/auth/register", json=bob).status_code == 201
+    bob_login = client.post("/auth/login", data={"username": bob["email"], "password": bob["password"]})
+    bob_headers = {"Authorization": f"Bearer {bob_login.json()['access_token']}"}
+
+    book_one = client.post("/books", json={
+        "title": "Advanced APIs",
+        "author": "Dana Architect",
+        "genre": "Software",
+        "published_year": 2023,
+        "average_rating": 0.0,
+        "description": "Building resilient APIs"
+    }).json()
+    book_two = client.post("/books", json={
+        "title": "Learning SQL",
+        "author": "Chris Query",
+        "genre": "Data",
+        "published_year": 2021,
+        "average_rating": 0.0,
+        "description": "SQL foundations"
+    }).json()
+
+    review_one = client.post("/reviews", headers=alice_headers, json={"book_id": book_one["id"], "rating": 5, "comment": "Excellent"})
+    assert review_one.status_code == 201
+    review_two = client.post("/reviews", headers=alice_headers, json={"book_id": book_two["id"], "rating": 4, "comment": "Great intro"})
+    assert review_two.status_code == 201
+
+    filtered_reviews = client.get("/reviews", params={"user_id": 1, "min_rating": 5})
+    assert filtered_reviews.status_code == 200
+    assert len(filtered_reviews.json()) == 1
+    assert filtered_reviews.json()[0]["rating"] == 5
+
+    forbidden_update = client.put(f"/reviews/{review_one.json()['id']}", headers=bob_headers, json={"rating": 1})
+    assert forbidden_update.status_code == 403
+
+    empty_review_update = client.put(f"/reviews/{review_one.json()['id']}", headers=alice_headers, json={})
+    assert empty_review_update.status_code == 400
+
+    profile = client.get("/analytics/user-profile/1")
+    assert profile.status_code == 200
+    profile_json = profile.json()
+    assert profile_json["review_count"] == 2
+    assert profile_json["preferred_genres"][0]["genre"] == "Software"
+    assert len(profile_json["recent_reviews"]) == 2
 
 
 def test_openapi_uses_framework_default_generation(client):

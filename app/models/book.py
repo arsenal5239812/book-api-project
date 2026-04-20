@@ -11,6 +11,10 @@ class Book(Base):
     genre = Column(String(100), nullable=False, index=True)
     published_year = Column(Integer, nullable=True)
     average_rating = Column(Float, default=0.0)
+    ratings_count = Column(Integer, default=0, nullable=False)
+    isbn13 = Column(String(20), nullable=True, index=True)
+    language_code = Column(String(10), nullable=True, index=True)
+    source = Column(String(50), nullable=False, default="manual", index=True)
     description = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

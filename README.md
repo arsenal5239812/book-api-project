@@ -49,6 +49,21 @@ API docs will be available at:
 python scripts/import_books.py scripts/sample_books.csv
 ```
 
+## Import real public book data
+This project can also import the public `goodbooks-10k` dataset for a stronger analytics and recommendation demo.
+
+Download and import directly:
+```bash
+python scripts/import_books.py --download-goodbooks --goodbooks-dir scripts/goodbooks-10k --limit 1500 --min-ratings-count 10000 --reset
+```
+
+The importer uses:
+- `books.csv`
+- `tags.csv`
+- `book_tags.csv`
+
+It maps high-signal Goodreads tags into coursework-friendly genres and stores metadata such as `ratings_count`, `isbn13`, `language_code`, and `source`.
+
 ## Run tests
 ```bash
 pytest

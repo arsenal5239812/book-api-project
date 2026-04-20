@@ -5,3 +5,4 @@ __pycache__/
 .env
 book_api.db
 test.db
+scripts/goodbooks-10k/
