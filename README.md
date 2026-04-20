@@ -13,7 +13,9 @@ A FastAPI coursework project that exposes a SQL-backed API for book metadata, re
 - Books:
   - Create, read, update, and delete books
   - Advanced filtering by genre, author, language, source, year range, rating, and ratings count
+  - Provenance filtering by origin type, source platform, translation status, creation disclosure, moderation status, and AI risk score
   - Search, sorting, and pagination on `GET /books`
+  - Dedicated provenance update workflow via `PUT /books/{book_id}/provenance`
 - Users:
   - Register and log in with JWT
   - Read user listings and individual profiles
@@ -32,8 +34,38 @@ A FastAPI coursework project that exposes a SQL-backed API for book metadata, re
   - Rating bands
   - Author performance
   - Publication decade distribution
+  - Creation disclosure distribution
+  - Moderation status distribution
+  - Web novel translation distribution
   - User profile analytics
-  - Explainable recommendations with ranking reasons
+  - Explainable recommendations with ranking reasons and content-preference filtering
+
+## Provenance and AI transparency layer
+The API now includes a provenance metadata layer designed for platform-governance style scenarios rather than simple catalogue storage.
+
+Each book can store:
+- `origin_type`
+- `source_platform`
+- `original_language`
+- `translation_status`
+- `creation_disclosure`
+- `disclosure_source`
+- `moderation_status`
+- `ai_risk_score`
+- `provenance_notes`
+
+This makes it possible to model:
+- traditionally published books versus web novels
+- translated versus original works
+- human-only versus AI-assisted disclosure
+- verified versus flagged provenance records
+
+The recommendation endpoint can also apply a reader-facing content preference:
+- `human_only`
+- `allow_ai_assisted`
+- `any`
+
+This allows the project to demonstrate not only recommendation logic, but also how provenance metadata can influence discovery and trust.
 
 ## Public dataset support
 The project can import the public `goodbooks-10k` dataset to create a stronger demo for analytics and recommendation features.
@@ -52,6 +84,8 @@ Imported metadata includes:
 - `isbn13`
 - `language_code`
 - `source`
+
+Manually curated provenance fields can then be added through the API to support web-novel origin tracking, translation labels, and creation disclosure workflows.
 
 The importer also maps high-signal Goodreads tags into coursework-friendly genres.
 
@@ -107,9 +141,12 @@ The importer protects against duplicate inserts by skipping books already presen
 - Register and log in a user
 - Import `goodbooks-10k` data
 - Filter books with `source=goodbooks-10k`
+- Create or update provenance metadata for one or two books with `PUT /books/{book_id}/provenance`
+- Filter books by `origin_type`, `creation_disclosure`, or `moderation_status`
 - Create reviews for a few books
 - Show `/analytics/user-profile/{user_id}`
-- Show `/analytics/recommendations/{user_id}`
+- Show provenance analytics such as `/analytics/creation-disclosure-distribution`
+- Show `/analytics/recommendations/{user_id}` with `content_preference=human_only`
 - Show metadata analytics such as `/analytics/language-distribution` and `/analytics/author-performance`
 
 ## Repository scope right now
