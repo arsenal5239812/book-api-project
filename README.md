@@ -96,7 +96,7 @@ The importer also maps high-signal Goodreads tags into coursework-friendly genre
 - FastAPI
 - SQLAlchemy
 - Alembic
-- PostgreSQL for deployment or coursework submission
+- PostgreSQL for production-style deployment
 - SQLite fallback for local development and tests
 - JWT with `python-jose`
 - Pytest
@@ -114,13 +114,16 @@ Copy-Item .env.example .env
 
 The application loads configuration automatically from `.env`, so database, auth, and documentation settings can be changed without editing source code.
 
+If `.env` is not customised, the default local setup uses the SQLite database configured for development.
+
 Database schema changes are now managed with Alembic migrations rather than automatic table creation inside the application startup path.
 
 API docs will be available at:
 - `http://127.0.0.1:8000/docs`
 - `http://127.0.0.1:8000/redoc`
 
-Repository documentation file:
+Repository documentation files:
+- `docs/api_documentation.pdf`
 - `docs/api_documentation.md`
 
 ## Import sample data
@@ -172,16 +175,15 @@ Create a new migration after model changes:
 - Show metadata analytics such as `/analytics/language-distribution` and `/analytics/author-performance`
 
 ## Repository scope right now
-This GitHub version is intentionally code-first while the final coursework deliverables are still being refined.
+This GitHub repository now contains the core coursework deliverables needed for examiner review alongside the runnable source code.
 
 Included now:
 - API source code
-- API documentation in Markdown
+- API documentation in PDF and Markdown
+- Technical report in PDF and Markdown
 - Tests
 - Import script and sample CSV data
 - Setup instructions and environment template
 
-To be added later for final coursework submission:
-- API documentation PDF
-- Technical report PDF
+Prepared locally for final coursework submission:
 - Presentation slides
