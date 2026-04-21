@@ -8,4 +8,5 @@ test.db
 scripts/goodbooks-10k/
 tmp/
 ~$*.pptx
-slides/
+slides/*
+!slides/book_api_project_slides.pptx
