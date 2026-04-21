@@ -120,6 +120,9 @@ API docs will be available at:
 - `http://127.0.0.1:8000/docs`
 - `http://127.0.0.1:8000/redoc`
 
+Repository documentation file:
+- `docs/api_documentation.md`
+
 ## Import sample data
 ```powershell
 .\.venv\Scripts\python.exe scripts\import_books.py scripts\sample_books.csv
@@ -173,6 +176,7 @@ This GitHub version is intentionally code-first while the final coursework deliv
 
 Included now:
 - API source code
+- API documentation in Markdown
 - Tests
 - Import script and sample CSV data
 - Setup instructions and environment template

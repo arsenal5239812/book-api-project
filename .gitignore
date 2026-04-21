@@ -6,3 +6,5 @@ __pycache__/
 book_api.db
 test.db
 scripts/goodbooks-10k/
+tmp/
+~$*.pptx
